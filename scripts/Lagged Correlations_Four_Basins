@@ -1,0 +1,64 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
+import os
+
+# Set Times New Roman font
+font_path = "C:/Windows/Fonts/times.ttf"  # Adjust path if necessary
+font_manager.fontManager.addfont(font_path)
+plt.rcParams['font.family'] = 'Times New Roman'
+plt.rcParams['font.size'] = 18
+
+# File paths for the two stations
+file_paths = {
+    'Wellawaya': r"D:\Research Datasets\Additional Datasets\Defence 07\Wellawaya_Updated\Wellawaya_SPI_SSI.xlsx",
+    'Deraniyagala': r"D:\Research Datasets\Additional Datasets\Defence 07\Deraniyagala_Updated\Deraniyagala_SPI_SSI.xlsx"
+}
+
+# Define output directory for saving plots
+output_dir = r"D:\Research Datasets\Additional Datasets\Defence 07\Wellawaya_Updated\Heatmap_Plots"
+os.makedirs(output_dir, exist_ok=True)  # Create directory if it doesn't exist
+
+# Define accumulation periods and corresponding column names
+accumulation_periods = ['1-month', '3-month', '12-month']
+spi_cols = ['SPI_1', 'SPI_3', 'SPI_12']
+ssi_cols = ['SSI_1', 'SSI_3', 'SSI_12']
+lags = range(0, 13)
+
+# Function to compute lagged correlations
+def compute_lagged_correlations(df, spi_col, ssi_col, lags):
+    corr_matrix = pd.DataFrame(index=accumulation_periods, columns=lags, dtype=float)
+    for i, period in enumerate(accumulation_periods):
+        spi_series = df[spi_col[i]]
+        ssi_series = df[ssi_col[i]]
+        for lag in lags:
+            shifted_ssi = ssi_series.shift(-lag)
+            corr = spi_series.corr(shifted_ssi, method='pearson')
+            corr_matrix.at[period, lag] = corr
+    return corr_matrix
+
+# Process each station and save separate plots
+for station, file_path in file_paths.items():
+    # Load and filter data for 1990–2015
+    df = pd.read_excel(file_path, parse_dates=['Date'])
+    df = df[(df['Date'].dt.year >= 1990) & (df['Date'].dt.year <= 2015)]
+    
+    # Compute correlations
+    corr_matrix = compute_lagged_correlations(df, spi_cols, ssi_cols, lags)
+    
+    # Create a new figure for each station
+    plt.figure(figsize=(12, 5))
+    sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap='coolwarm', vmin=0, vmax=1.0,
+                linewidths=0.5, annot_kws={"size": 18})
+    plt.title(f'Lagged Correlations: SPI vs SSI ({station}, 1990–2015)')
+    plt.xlabel('Lag (months)', fontweight='bold')
+    plt.ylabel('Accumulation Period', fontweight='bold')
+    
+    # Save the plot
+    output_path = os.path.join(output_dir, f'{station}_Lagged_Correlations_Heatmap.png')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+print(f"Heatmaps saved in: {output_dir}")
