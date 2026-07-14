@@ -1,0 +1,198 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import seaborn as sns
+import os
+import numpy as np
+
+plt.style.use('default')
+mpl.rcParams['font.family'] = 'Times New Roman'
+mpl.rcParams['font.size'] = 12
+mpl.rcParams['axes.titlesize'] = 13
+mpl.rcParams['axes.labelsize'] = 12
+mpl.rcParams['xtick.labelsize'] = 12
+mpl.rcParams['ytick.labelsize'] = 12
+mpl.rcParams['legend.fontsize'] = 10.5
+mpl.rcParams['axes.grid'] = True
+mpl.rcParams['grid.linestyle'] = '--'
+mpl.rcParams['grid.alpha'] = 0.6
+mpl.rcParams['axes.axisbelow'] = True
+
+BASIN_ORDER = ['Deraniyagala', 'Nawalapitiya', 'Padiyathalawa', 'Wellawaya']
+TIMESCALE_ORDER = [1, 3, 12]
+THRESHOLD_ORDER = [-1.0, -1.5, -2.0]
+
+THRESHOLD_COLORS = {
+    -1.0: '#1f77b4',
+    -1.5: '#ff7f0e',
+    -2.0: '#d62728'
+}
+
+SPI_COLOR = 'Red'
+SSI_COLOR = 'blue'
+TYPE_PALETTE = {'SPI': SPI_COLOR, 'SSI': SSI_COLOR}
+
+INPUT_FILE = r"D:\Research Datasets\Additional Datasets\Working Folder\Four basins\ICESWSE_Results\Detailed_Drought_Analysis\Detailed_Propagation_Results_fourbasins\Propagation_Results_four_basins.xlsx"
+
+OUTPUT_DIR = r"D:\Research Datasets\Additional Datasets\Working Folder\Four basins\ICESWSE_Results\Detailed_Drought_Analysis\Detailed_Propagation_Results_fourbasins"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# ────────────────────────────────────────────────
+#  LOAD AND PREPARE DATA
+# ────────────────────────────────────────────────
+spi = pd.read_excel(INPUT_FILE, sheet_name='SPI_Events')
+ssi = pd.read_excel(INPUT_FILE, sheet_name='SSI_Events')
+
+spi['type'] = 'SPI'
+ssi['type'] = 'SSI'
+
+df = pd.concat([spi, ssi], ignore_index=True)
+
+df['basin'] = pd.Categorical(df['basin'], categories=BASIN_ORDER, ordered=True)
+df['timescale'] = pd.Categorical(df['timescale'], categories=TIMESCALE_ORDER, ordered=True)
+df['threshold'] = pd.Categorical(df['threshold'], categories=THRESHOLD_ORDER, ordered=True)
+
+df_long = df.melt(
+    id_vars=['basin', 'timescale', 'threshold', 'type'],
+    value_vars=['duration', 'severity', 'intensity'],
+    var_name='characteristic',
+    value_name='value'
+)
+
+# ────────────────────────────────────────────────
+#  MAIN PLOTTING FUNCTION
+# ────────────────────────────────────────────────
+def plot_box_characteristic(char, data, ylabel, filename_suffix):
+    fig, axes = plt.subplots(
+        nrows=3, ncols=4,
+        figsize=(9, 4.5),
+        sharey='row',
+        sharex=True,
+        constrained_layout=True
+    )
+    
+    char_data = data[data['characteristic'] == char].copy()
+    
+    vals = char_data['value'].dropna()
+    if len(vals) == 0:
+        global_ylim = (0, 1)
+    else:
+        p95 = np.percentile(vals, 95)
+        p99 = np.percentile(vals, 99)
+        upper = max(p95 * 1.2, p99 * 1.05, 1.0)
+        
+        if char == 'duration':
+            upper = min(max(upper, 24), 60)
+            global_ylim = (0, np.ceil(upper / 5) * 5)
+        elif char == 'severity':
+            upper = min(max(upper, 35), 80)
+            global_ylim = (0, np.ceil(upper / 5) * 5)
+        else:
+            upper = min(max(upper, 3.0), 8.0)
+            global_ylim = (0, round(upper * 2) / 2 + 0.5)
+    
+    letters = ['(a)', '(b)', '(c)', '(d)', '(e)', '(f)',
+               '(g)', '(h)', '(i)', '(j)', '(k)', '(l)']
+    letter_idx = 0
+    
+    for row, ts in enumerate(TIMESCALE_ORDER):
+        for col, basin in enumerate(BASIN_ORDER):
+            ax = axes[row, col]
+            
+            subset = char_data[
+                (char_data['basin'] == basin) &
+                (char_data['timescale'] == ts)
+            ]
+            
+            if subset.empty or len(subset) < 2:
+                ax.axis('off')
+                continue
+            
+            sns.boxplot(
+                data=subset,
+                x='threshold',
+                y='value',
+                hue='type',
+                palette=TYPE_PALETTE,
+                width=0.68,
+                dodge=True,
+                linewidth=1.4,
+                fliersize=3.5,
+                whis=1.5,
+                ax=ax
+            )
+            
+            for i, artist in enumerate(ax.artists):
+                th_idx = i // 2
+                th = THRESHOLD_ORDER[th_idx % len(THRESHOLD_ORDER)]
+                artist.set_facecolor(THRESHOLD_COLORS[th])
+                artist.set_edgecolor('black')
+                if i % 2 == 1:
+                    artist.set_hatch('///')
+                    artist.set_alpha(0.88)
+            
+            ax.grid(True, which='major', axis='both')
+            
+            if row == 0 and col == 3:
+                ax.legend(title=None, loc='upper right', frameon=True, fontsize=10.5)
+            else:
+                if ax.get_legend():
+                    ax.get_legend().remove()
+            
+            ax.text(0.04, 0.94, letters[letter_idx],
+                    transform=ax.transAxes,
+                    fontsize=14, fontweight='bold',
+                    va='top', ha='left')
+            letter_idx += 1
+            
+            if col == 0:
+                ax.set_ylabel(ylabel, labelpad=12)
+            else:
+                ax.set_ylabel("")
+            
+            if row == 2:
+                ax.set_xlabel("Threshold", labelpad=10)
+            else:
+                ax.set_xlabel("")
+            
+            if row == 0:
+                ax.set_title(basin, pad=10, fontsize=13)
+            
+            # ← FIXED: move timescale label further left
+            if col == 0:
+                ax.text(-0.42, 0.4, f"{ts}-month",
+                        transform=ax.transAxes,
+                        rotation=90,
+                        va='center', ha='center',
+                        fontsize=12)
+            
+            ax.set_ylim(global_ylim)
+            
+            if char in ['duration', 'severity']:
+                ax.yaxis.set_major_locator(plt.MultipleLocator(10))
+            else:
+                ax.yaxis.set_major_locator(plt.MultipleLocator(1))
+            
+            ax.tick_params(axis='both', rotation=0)
+    
+    fig.suptitle(
+        f"Differences in Drought {char.capitalize()} Between SPI and SSI Across Timescales and Thresholds (1990–2015)",
+        fontsize=14, y=1.05)
+    
+    out_path = os.path.join(
+        OUTPUT_DIR,
+        f"{char}_boxplot_comparison_clean.png"
+    )
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.show(fig)
+    print(f"Saved: {os.path.basename(out_path)}")
+
+
+# ────────────────────────────────────────────────
+#  RUN THE PLOTS
+# ────────────────────────────────────────────────
+plot_box_characteristic('duration', df_long, "Duration (months)", "clean")
+plot_box_characteristic('severity', df_long, "Severity (−)", "clean")
+plot_box_characteristic('intensity', df_long, "Intensity (−)", "clean")
+
+print("All three figures generated with consistent axes.")
