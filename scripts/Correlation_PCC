@@ -1,0 +1,49 @@
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+
+# Set the font properties globally
+plt.rcParams['font.family'] = 'Times New Roman'
+plt.rcParams['font.size'] = 18
+
+# File path
+file_path = r"D:\Research Datasets\Additional Datasets\Working Folder\Four basins\Deraniyagala_SPI_SSI.xlsx"
+
+# Read the Excel file
+df = pd.read_excel(file_path)
+
+# Select the relevant columns (excluding Date for correlation)
+columns = ['SPI_1', 'SPI_3', 'SPI_12', 'SSI_1', 'SSI_3', 'SSI_12']
+data = df[columns]
+
+# Rename columns to remove underscores
+data.columns = [col.replace('_', ' ') for col in data.columns]
+
+# Calculate the Pearson correlation matrix
+corr_matrix = data.corr(method='pearson')
+
+# Create a mask for the upper triangle, excluding the diagonal
+mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
+
+# Create the heatmap with a color scheme similar to the uploaded image
+plt.figure(figsize=(10, 8))
+sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-0.0, vmax=1.0,fmt='.2f',
+            annot_kws={'size': 20, 'fontfamily': 'Times New Roman'},
+            cbar_kws={'label': 'Pearson Correlation Coefficient (PCC)'},
+            mask=mask,  # Show upper triangle excluding diagonal
+            square=True)  # Ensure square cells
+plt.title('Correlation Heatmap of SPI and SSI Indices (Deraniyagala Subbasin)', 
+          fontsize=16, fontfamily='Times New Roman')
+
+# Save the plot
+plot_path = os.path.join(os.path.dirname(file_path), 'Correlation_Heatmap_Deraniyagala.png')
+plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+plt.show()
+
+# Save the Excel file
+df.to_excel(file_path, index=False)
+
+print(f"Heatmap saved at: {plot_path}")
+print(f"Excel file saved at: {file_path}")
